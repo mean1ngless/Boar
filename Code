@@ -1,0 +1,119 @@
+#include <ESP8266WiFi.h>// Підключення бібліотеки
+#include <WiFiClientSecure.h> // Підключення бібліотеки
+#include <UniversalTelegramBot.h>// Підключення бібліо-теки
+#define WIFI_SSID "OneS1mple"// Встановлення паролю до Wi-Fi  
+#define WIFI_PASSWORD "12345678" 
+#define BOT_TOKEN "1449587218:AAGtt7NT3_IZmPD8LHEnf-sWyCQoHyKWqgs" //Встановлення бот-токену для з’єднання із платою та бібліотекою
+const unsigned long BOT_MTBS = 1000;  // середній час між повідомленнями
+X509List cert(TELEGRAM_CERTIFICATE_ROOT);
+WiFiClientSecure secured_client;
+UniversalTelegramBot bot(BOT_TOKEN, secured_client);
+unsigned long bot_lasttime;  // останнє сканування по-відомлень було зроблено
+const int ledPin = LED_BUILTIN;
+int ledStatus = 0;
+void handleNewMessages(int numNewMessages)
+{
+  Serial.print("handleNewMessages ");
+  Serial.println(numNewMessages);
+  for (int i = 0; i < numNewMessages; i++)
+  {
+    String chat_id = bot.messages[i].chat_id;
+    String text = bot.messages[i].text;
+    String from_name = bot.messages[i].from_name;
+    if (from_name == "")
+      from_name = "Guest";
+    if (text == "/ledon")
+    {
+      digitalWrite(ledPin, LOW); // включити світлодіод
+      ledStatus = 1;
+      bot.sendMessage(chat_id, "Світлодіод увімкнений ", "");
+    }
+    if (text == "/ledoff")
+    {
+      ledStatus = 0;
+      digitalWrite(ledPin, HIGH); // вимкніть світлодіод
+      bot.sendMessage(chat_id, " Світлодіод вимкнений ", "");
+    }
+    if (text == "/status")
+    {
+      if (ledStatus)
+      {
+        bot.sendMessage(chat_id, " Світлодіод увімкне-ний ", "");
+      }
+      else
+      {
+        bot.sendMessage(chat_id, " Світлодіод вимкнений ", "");
+      }
+    }
+    if (text == "/value")
+    {
+      analogRead(A0);
+      bot.sendMessage(chat_id,"Концентрація газу: ", "");
+      char vle[5];
+      float v=analogRead(A0);
+      int ppm=(116.602*pow(v/10, 2.769));
+      itoa(ppm,vle,10);
+      //itoa(analogRead(A0),ppm,10);
+      bot.sendMessage(chat_id,vle,"");
+      
+      
+    }
+    if (text == "/start")
+    {
+      String welcome = "Привіт, це телеграм-Бот, який вимірює концентрацію газу в повітрі, " + from_name + ".\n";
+      welcome += "/ledon : Включити світлодіод     ";
+      welcome += "/ledoff : Вимкнути світлодіод      ";
+      welcome += "/status : Перевірити стан світлодіоду     ";
+      welcome += "/value : Перевірити концентрацію газу    ";
+      bot.sendMessage(chat_id, welcome, "Markdown");
+    }
+  }
+}
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println();
+  pinMode(A0, INPUT);
+  pinMode(ledPin, OUTPUT);  // ініціалізувати цифровий ledPin як вихід
+  delay(10);
+  digitalWrite(ledPin, HIGH); ); // ініціалізувати штифт як вимкнений (активний LOW)
+  configTime(0, 0, "pool.ntp.org");     
+  secured_client.setTrustAnchors(&cert); 
+  Serial.print("Connecting to Wifi SSID ");
+  Serial.print("Reading sensor: [");
+  Serial.print(analogRead (A0));
+  Serial.println("]");
+  Serial.print(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.print("\nWiFi connected. IP address: ");// Ви-від тексту до монітору порта про з’єднання із Wi-fi
+  Serial.println(WiFi.localIP());
+  Serial.print("Retrieving time: ");
+  time_t now = time(nullptr);
+  while (now < 24 * 3600)
+  {
+    Serial.print(".");
+    delay(100);
+    now = time(nullptr);
+  }
+  Serial.println(now);
+}
+void loop()
+{
+  if (millis() - bot_lasttime > BOT_MTBS)
+  {
+    int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+    while (numNewMessages)
+    {
+      Serial.println("got response");
+      handleNewMessages(numNewMessages);
+      numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+     
+    }
+    bot_lasttime = millis();
+  }
+}
